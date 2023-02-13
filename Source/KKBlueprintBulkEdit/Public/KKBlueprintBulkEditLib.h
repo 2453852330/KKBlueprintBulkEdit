@@ -16,10 +16,11 @@ class KKBLUEPRINTBULKEDIT_API UKKBlueprintBulkEditLib : public UBlueprintFunctio
 {
 	GENERATED_BODY()
 
+	
+
 	UFUNCTION(BlueprintCallable,Category="KKBPBulkEdit")
-	static void KK_GetBlueprintInfo(TArray<FString> & VarList , FKKBpObjRef & Obj);
+	static FString KK_GetBlueprintVariableList(TArray<FName> & VarList ,TArray<FText> & CategoryList, FKKBpObjRef & Obj , bool bEnableSuper,bool bEnablePrivate);
 
 	UFUNCTION(BlueprintCallable,Category="KKBPBuldEdit")
-	static void KK_SetCategory(const FKKBpObjRef & obj ,const FText & NewText,FName VarName);
-	
+	static void KK_SetBlurptinyVariableCategory(const FKKBpObjRef & obj ,const FText & NewText,FName VarName,bool bRecompile);
 };
