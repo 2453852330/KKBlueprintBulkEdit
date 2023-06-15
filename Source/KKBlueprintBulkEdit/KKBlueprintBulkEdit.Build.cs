@@ -39,7 +39,8 @@ public class KKBlueprintBulkEdit : ModuleRules
 				"Slate",
 				"SlateCore",
 				// ... add private dependencies that you statically link with here ...	
-				"UnrealEd"
+				"UnrealEd",
+				"BlueprintGraph"
 			}
 			);
 		

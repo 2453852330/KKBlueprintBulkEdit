@@ -2,100 +2,173 @@
 
 
 #include "KKBlueprintBulkEditLib.h"
-
 #include "Editor.h"
-#include "KKBPBulkEdit.h"
-#include "ObjectEditorUtils.h"
 #include "Engine/Selection.h"
 #include "Engine/TimelineTemplate.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 
-FString UKKBlueprintBulkEditLib::KK_GetBlueprintVariableList(TArray<FName>& VarList,TArray<FText> & CategoryList , FKKBpObjRef& Obj,bool bEnableSuper,bool bEnablePrivate)
+void UKKBlueprintBulkEditLib::KK_GetBlueprintVariableList(
+	FKKBlueprintWrapper & BPWrapper,TArray<FKKBPVariableInfo> & VarInfos
+	)
 {
 	// 获取到编辑器选中的 Object
 	USelection * Selections = GEditor->GetSelectedObjects();
-	if (!Selections || Selections->Num() <=0)
+	if (Selections->Num() <= 0 )
 	{
-		return TEXT("No Select Object");
+		if (GEngine)
+		{
+			GEngine->AddOnScreenDebugMessage(-1,5.f,FColor::Red,TEXT("Get Select Objects Failed, Num <= 0"));
+		}
+		UE_LOG(LogTemp,Warning,TEXT("[%s::%d]:Get Select Objects Failed, Num <= 0"),__FUNCTIONW__,__LINE__);
+		return;
 	}
 	// 转换成 UBlueprint
 	UBlueprint * BpObj = Cast<UBlueprint>(Selections->GetSelectedObject(0));
-	if (!BpObj || !BpObj->SkeletonGeneratedClass)
+	if (!BpObj)
 	{
-		return TEXT("Get Blueprint Info Failed");
-	}
-	// create set to save list
-	TSet<FName> tmp_var_list;
-	// 获取到 UBlueprint 的结构类
-	// 通过迭代器反射遍历 FProperty : 迭代器参数可选: 是否获取父类 ? 
-	for (TFieldIterator<FProperty> PropertyIt(BpObj->SkeletonGeneratedClass,bEnableSuper?EFieldIteratorFlags::IncludeSuper:EFieldIteratorFlags::ExcludeSuper);
-		PropertyIt; ++PropertyIt)
-	{
-		FProperty* Property = *PropertyIt;
-		// 如果属性没有 flag 是函数参数 && (允许私有 || 是否是蓝图可见变量);  
-		if ((!Property->HasAnyPropertyFlags(CPF_Parm) && (bEnablePrivate || Property->HasAllPropertyFlags(CPF_BlueprintVisible))))
+		if (GEngine)
 		{
-			tmp_var_list.Add(Property->GetFName());
+			GEngine->AddOnScreenDebugMessage(-1,5.f,FColor::Red,TEXT("Cast Selected Object To UBlurprint Failed"));
+		}
+		UE_LOG(LogTemp,Warning,TEXT("[%s::%d]:Cast Selected Object To UBlurprint Failed"),__FUNCTIONW__,__LINE__);
+		return;
+	}
+	// cache obj
+	BPWrapper = FKKBlueprintWrapper(BpObj);
+	
+	for (FBPVariableDescription it : BpObj->NewVariables)
+	{
+		VarInfos.Add(FKKBPVariableInfo(
+			it.VarName,
+			it.FriendlyName,
+			it.VarType.PinCategory,
+			it.Category
+		));
+	}
+}
+
+void UKKBlueprintBulkEditLib::KK_SetBlueprintVariableCategory(UBlueprint* InBlueprint, FName VarName, FText NewCategory)
+{
+	if (InBlueprint)
+	{
+		FBlueprintEditorUtils::SetBlueprintVariableCategory(InBlueprint,VarName,nullptr,NewCategory);
+	}
+}
+
+TArray<int32> UKKBlueprintBulkEditLib::KK_GetSelectedIndex(int32 Start, int32 End)
+{
+	TArray<int32> List;
+	if (Start == End)
+	{
+		List.Add(Start);
+	}
+	else if( Start > End)
+	{
+		int32 Tmp = Start;
+		while (Tmp >= End)
+		{
+			List.Add(Tmp--);
 		}
 	}
-
-	if (bEnablePrivate)
+	else
 	{
-		// Include SCS node variable names, timelines, and other member variables that may be pending compilation. Consider them to be "private" as they're not technically accessible for editing just yet.
-		TArray<UBlueprint*> ParentBPStack;
-		// 获取所有的父类 UBlueprint ;
-		UBlueprint::GetBlueprintHierarchyFromClass(BpObj->SkeletonGeneratedClass, ParentBPStack);
-		// the index 0 is self
-		for (int32 StackIndex = ParentBPStack.Num() - 1; StackIndex >= 0; --StackIndex)
+		int32 Tmp = Start;
+		while (Tmp <= End)
 		{
-			UBlueprint* ParentBP = ParentBPStack[StackIndex];
-			check(ParentBP != nullptr);
-			
-			// 不知道有啥用 
-			// FBlueprintEditorUtils::GetSCSVariableNameList(ParentBP, tmp_var_list);
-			
-			for (int32 VariableIndex = 0; VariableIndex < ParentBP->NewVariables.Num(); ++VariableIndex)
+			List.Add(Tmp++);
+		}
+	}
+	return List;
+}
+
+void UKKBlueprintBulkEditLib::KK_GetBlueprintFunctionList(FKKBlueprintWrapper & BPWrapper,TArray<FKKFuncEdGraphWrapper>& FuncList)
+{
+	// 获取到编辑器选中的 Object
+	USelection * Selections = GEditor->GetSelectedObjects();
+	if (Selections->Num() <= 0 )
+	{
+		if (GEngine)
+		{
+			GEngine->AddOnScreenDebugMessage(-1,5.f,FColor::Red,TEXT("Get Select Objects Failed, Num <= 0"));
+		}
+		UE_LOG(LogTemp,Warning,TEXT("[%s::%d]:Get Select Objects Failed, Num <= 0"),__FUNCTIONW__,__LINE__);
+		return;
+	}
+	// 转换成 UBlueprint
+	UBlueprint * BpObj = Cast<UBlueprint>(Selections->GetSelectedObject(0));
+	
+	if (!BpObj)
+	{
+		if (GEngine)
+		{
+			GEngine->AddOnScreenDebugMessage(-1,5.f,FColor::Red,TEXT("Cast Selected Object To UBlurprint Failed"));
+		}
+		UE_LOG(LogTemp,Warning,TEXT("[%s::%d]:Cast Selected Object To UBlurprint Failed"),__FUNCTIONW__,__LINE__);
+		return;
+	}
+
+	BPWrapper = FKKBlueprintWrapper(BpObj);
+	/** NOTE: the event dont have Category */
+	// for (UEdGraph* EventGraph : BpObj->EventGraphs)
+	// {
+	// 	FuncList.Add(FKKFuncEdGraphWrapper(EventGraph));
+	// } 
+	for (UEdGraph* FunctionGraph : BpObj->FunctionGraphs)
+	{
+		FuncList.Add(FKKFuncEdGraphWrapper(FunctionGraph));
+	} 
+	for (UEdGraph* MacroGraph : BpObj->MacroGraphs)
+	{
+		FuncList.Add(FKKFuncEdGraphWrapper(MacroGraph));
+	}
+}
+
+
+void UKKBlueprintBulkEditLib::KK_SetBlueprintFunctionCategory(const FKKFuncEdGraphWrapper & Wrapper, FText NewCategory)
+{
+	if (Wrapper.Graph)
+	{
+		FBlueprintEditorUtils::SetBlueprintFunctionOrMacroCategory(Wrapper.Graph,NewCategory);
+	}
+}
+
+void UKKBlueprintBulkEditLib::KK_GetInfoFromGraphWrapper(const FKKBlueprintWrapper & BPWrapper,const FKKFuncEdGraphWrapper& Wrapper,FKKGraphInfos & Infos)
+{
+	if (UEdGraph * Graph = Wrapper.Graph)
+	{
+		Infos.Name = Graph->GetName();
+		if (BPWrapper.BPObj)
+		{
+			// UFunction Cant Find Macro
+			UFunction* Function = nullptr;
+			for (TFieldIterator<UFunction> FunctionIt(BPWrapper.BPObj->SkeletonGeneratedClass, EFieldIteratorFlags::IncludeSuper); FunctionIt; ++FunctionIt)
 			{
-				tmp_var_list.Add(ParentBP->NewVariables[VariableIndex].VarName);
-			}
-			// timeline变量
-			for (UTimelineTemplate* Timeline : ParentBP->Timelines)
-			{
-				if (Timeline)
+				if (FunctionIt->GetName() == Graph->GetName())
 				{
-					tmp_var_list.Add(Timeline->GetFName());
+					Function = *FunctionIt;
+					break;
+				}
+			}
+			if (Function)
+			{
+				Infos.Category = Function->GetMetaData(FBlueprintMetadata::MD_FunctionCategory);
+				// default is empty
+				if (Infos.Category.IsEmpty())
+				{
+					Infos.Category = TEXT("Default");
+				}
+			}
+			// its a Macro
+			else
+			{
+				FKismetUserDeclaredFunctionMetadata* MetaData = FBlueprintEditorUtils::GetGraphFunctionMetaData(Graph);
+				Infos.Category = MetaData?MetaData->Category.ToString():TEXT("Cant Get For Macro");
+				if (Infos.Category.IsEmpty())
+				{
+					Infos.Category = TEXT("Default");
 				}
 			}
 		}
 	}
-	UE_LOG(LogTemp,Warning,TEXT("find var name list finish"));
-	// 遍历找到的变量名列表,同时获取原来的Category;
-	for (FName it : tmp_var_list)
-	{
-		VarList.Add(it);
-
-		// 尝试获取 Category
-		FText CategoryName;
-		FProperty * TargetProperty = FindFProperty<FProperty>(BpObj->SkeletonGeneratedClass,it);
-		if (TargetProperty != nullptr)
-		{
-			CategoryName = FObjectEditorUtils::GetCategoryText(TargetProperty);
-			CategoryList.Add(CategoryName);
-		}
-		else
-		{
-			// 没有找到就填写NULL,防止数据不匹配
-			CategoryList.Add(FText::FromString("NULL"));
-		}
-	}
-	// cache obj
-	Obj.obj = BpObj;
-	return TEXT("Success");
 }
 
-void UKKBlueprintBulkEditLib::KK_SetBlurptinyVariableCategory(const FKKBpObjRef& obj, const FText& NewText,
-	FName VarName, bool bRecompile)
-{
-	FText CategoryName = FText::TrimPrecedingAndTrailing(NewText);
-	FBlueprintEditorUtils::SetBlueprintVariableCategory(obj.obj,VarName,nullptr,NewText,bRecompile);
-}
